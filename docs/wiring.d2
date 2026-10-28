@@ -1,3 +1,4 @@
+vars: {d2-config: {layout-engine: elk}}
 direction: right
 style.fill: "#16161d"
 
@@ -11,21 +12,35 @@ classes: {
   clk: {style: {stroke: "#7fb4ca"; stroke-width: 3; font-color: "#7fb4ca"}}
   mosi: {style: {stroke: "#98bb6c"; stroke-width: 3; font-color: "#98bb6c"}}
   miso: {style: {stroke: "#957fb8"; stroke-width: 3; font-color: "#957fb8"}}
+  contact: {style: {stroke: "#54546d"; stroke-width: 2}}
+  target: {style: {fill: "#16161d"; stroke: "#727169"; font-color: "#727169"; stroke-dash: 4; border-radius: 6}}
 }
 
-title: "Lab PSU 3.3 V + ESP-Prog JTAG -> SOIC-8 clip on a 25xx SPI flash" {
+title: "Lab PSU 3.3 V + ESP-Prog JTAG -> SOIC-8 clip -> 25xx SPI flash on the target PCB" {
   near: top-center
   shape: text
   style: {font-color: "#dcd7ba"; font-size: 30; bold: true}
 }
 
-psu: "Lab PSU (CC), 3.3 V, limit 300 mA" {
+psu: "Lab PSU (CC)" {
   class: board
+  set: "3.3 V, limit 300 mA" {class: pin}
   plus: "+ (red banana)" {class: pin}
   minus: "- (black banana)" {class: pin}
 }
 
-clip: "SOIC-8 clip (pin 1 on the chip dot)" {
+prog: "ESP-Prog JTAG header" {
+  class: board
+  jumper: "I/O jumper = 3.3 V" {class: pin}
+  gnd: "3  GND" {class: pin}
+  tms: "2  TMS" {class: pin}
+  tck: "4  TCK" {class: pin}
+  tdi: "8  TDI" {class: pin}
+  tdo: "6  TDO" {class: pin}
+  vdd: "1  VDD: leave unconnected" {class: nc}
+}
+
+clip: "SOIC-8 clip" {
   class: board
   p8: "8  VCC" {class: pin}
   p3: "3  WP#" {class: pin}
@@ -37,30 +52,46 @@ clip: "SOIC-8 clip (pin 1 on the chip dot)" {
   p2: "2  DO" {class: pin}
 }
 
-prog: "ESP-Prog JTAG header (I/O jumper = 3.3 V)" {
-  class: board
-  tms: "2  TMS" {class: pin}
-  tck: "4  TCK" {class: pin}
-  tdi: "8  TDI" {class: pin}
-  tdo: "6  TDO" {class: pin}
-  gnd: "3  GND" {class: pin}
-  vdd: "1  VDD: leave unconnected" {class: nc}
+pcb: "target PCB: its own power sources removed" {
+  class: target
+  chip: "25xx SPI flash\n(pin 1 = dot)" {
+    class: board
+    p8: "8  VCC" {class: pin}
+    p3: "3  WP#" {class: pin}
+    p7: "7  HOLD#" {class: pin}
+    p4: "4  GND" {class: pin}
+    p1: "1  CS#" {class: pin}
+    p6: "6  CLK" {class: pin}
+    p5: "5  DI" {class: pin}
+    p2: "2  DO" {class: pin}
+  }
+  rest: "rest of the board: its rails and buses share these pins" {class: pin}
+  chip.p8 -- rest {class: contact}
 }
 
-# Undirected, left node first: dagre ranks by edge direction, so this keeps
-# PSU | clip | ESP-Prog as three columns.
+# Undirected, left node first: the layout ranks by edge direction, so this
+# keeps PSU/ESP-Prog | clip | target PCB as columns.
 psu.plus -- clip.p8: "+3.3 V" {class: pwr}
 psu.plus -- clip.p3: "+3.3 V" {class: pwr}
 psu.plus -- clip.p7: "+3.3 V" {class: pwr}
 psu.minus -- clip.p4: "GND" {class: gnd}
 
-clip.p1 -- prog.tms: "CS#" {class: cs}
-clip.p6 -- prog.tck: "CLK" {class: clk}
-clip.p5 -- prog.tdi: "MOSI" {class: mosi}
-clip.p2 -- prog.tdo: "MISO" {class: miso}
-clip.p4 -- prog.gnd: "GND" {class: gnd}
+prog.tms -- clip.p1: "CS#" {class: cs}
+prog.tck -- clip.p6: "CLK" {class: clk}
+prog.tdi -- clip.p5: "MOSI" {class: mosi}
+prog.tdo -- clip.p2: "MISO" {class: miso}
+prog.gnd -- clip.p4 {class: gnd}
 
-note: "board under test fully unpowered; clip on/off only with PSU output off and USB unplugged\npower order: PSU on, check 3.3 V on VCC, then ESP-Prog USB in; reverse to disconnect" {
+clip.p8 -- pcb.chip.p8 {class: contact}
+clip.p3 -- pcb.chip.p3 {class: contact}
+clip.p7 -- pcb.chip.p7 {class: contact}
+clip.p4 -- pcb.chip.p4 {class: contact}
+clip.p1 -- pcb.chip.p1 {class: contact}
+clip.p6 -- pcb.chip.p6 {class: contact}
+clip.p5 -- pcb.chip.p5 {class: contact}
+clip.p2 -- pcb.chip.p2 {class: contact}
+
+note: "target PCB fully unpowered; clip pin 1 on the chip dot; clip on/off only with PSU output off and USB unplugged\npower order: PSU on, check 3.3 V on VCC, then ESP-Prog USB in; reverse to disconnect" {
   near: bottom-center
   shape: text
   style: {font-color: "#e6c384"; font-size: 24; italic: true}
