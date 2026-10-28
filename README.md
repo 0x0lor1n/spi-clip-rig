@@ -1,0 +1,134 @@
+# spi-clip-rig
+
+> [!WARNING]
+> Every line in this repo is ⚡electrovibe⚡-coded: diagrams, rules, docs.
+> Read it before you trust it with your hardware.
+
+An Espressif ESP-Prog and a SOIC-8 test clip as an in-circuit reader for a
+25xx SPI flash, with VCC from an external lab supply. No firmware: wires, a
+clip and a PSU.
+
+**Why.** Reading a soldered SPI flash (a laptop BIOS, a router) needs the
+chip powered while the rest of the board stays dark. The flash's VCC is a
+rail of the board, so whatever powers the flash also tries to power
+everything else on that rail. A current-limited bench supply makes that
+visible and survivable; the programmer's own 3.3 V does neither.
+
+**How.** The ESP-Prog's FT2232H drives SPI in MPSSE mode on its JTAG header
+(port A): TMS is CS#, TCK is CLK, TDI is MOSI, TDO is MISO. The lab PSU
+feeds VCC and holds WP# and HOLD# high. `flashrom` does the rest. See
+[docs/schematic.png](docs/schematic.png) (schemdraw, `src/schematic`) and
+[docs/wiring.png](docs/wiring.png) (d2), `.svg` next to both; pin numbers
+come from mcubench.fritzing in
+[mcu-bench](https://github.com/0x0lor1n/mcu-bench).
+
+| ESP-Prog JTAG | Lab PSU | SOIC-8 clip | Signal |
+|---|---|---|---|
+| 2 TMS | | 1 CS# | CS# |
+| 6 TDO | | 2 DO | MISO |
+| | + | 3 WP# | +3.3 V |
+| 3 GND | − | 4 GND | GND |
+| 8 TDI | | 5 DI | MOSI |
+| 4 TCK | | 6 CLK | CLK |
+| | + | 7 HOLD# | +3.3 V |
+| | + | 8 VCC | +3.3 V |
+| 1 VDD | | — | leave unconnected |
+
+## Safety rules
+
+- The PCB must have all power sources disconnected (no AC adapter, no
+  battery, no coin cell, no cables) before the clip goes on or comes off.
+  This protects both the IC and the programmer from ESD and bus contention.
+- Clip on and off only with the PSU output off and the programmer's USB
+  cable unplugged.
+- 3.3 V from an external current-limited lab PSU only, never from the
+  programmer's VDD pin. VDD feeds the IC's always-on rail through the
+  board's own regulators, which can wake the chipset: it then drives the
+  bus too and the reads come back garbled.
+- Check 3.3 V on VCC with a multimeter before the first read and note the
+  idle current. Tens of mA is normal; hundreds means the PCB is not fully
+  de-energized, check every cable.
+- Two identical reads and `cmp` before trusting the data. Test clips lose
+  contact often; a mismatch means reseat the clip and retry.
+- ESP-Prog I/O voltage jumper on 3.3 V, checked before the first
+  connection. An open VDD does not protect the signal lines: on 5 V the
+  jumper puts 5 V on TCK, TDI and TMS, out of spec for a 3.3 V flash.
+- The PSU current limit is a protection, not a label: 300 mA, or the lowest
+  the PSU allows above the expected idle. If the PSU drops into CC (output
+  sags below 3.3 V), switch the output off at once: the PCB draws power it
+  should not (not de-energized, or the clip is misaligned or shorted). Do
+  not raise the limit to make it work.
+
+## Connect and disconnect
+
+The flash is powered before the programmer drives its pins. The other way
+round, the ESP-Prog's signal lines back-power the board through the flash's
+protection diodes.
+
+1. PCB fully de-energized: cables, battery, coin cell out.
+2. Clip onto the IC, pin 1 on the chip's dot. PSU output off, USB unplugged.
+3. PSU output on. Multimeter: 3.3 V on VCC; note the idle current.
+4. ESP-Prog USB in.
+5. Reads, see the procedure below.
+6. ESP-Prog USB out.
+7. PSU output off.
+8. Clip off.
+
+## Reading the flash
+
+`flashrom` needs write access to the FT2232H's USB device: a udev rule
+(on NixOS `programs.flashrom.enable`) or root. There is no ESP-Prog preset
+in flashrom; it is a plain FT2232H on port A. `divisor` sets the SPI clock
+to 60 MHz / divisor; 8 (7.5 MHz) is a sane start over clip wires.
+
+    p=ft2232_spi:type=2232H,port=A,divisor=8
+
+Detect. flashrom prints the chip it found; if it lists several candidates,
+pick the one on the package and pass it as `-c <name>` from here on.
+
+    flashrom -p $p
+
+Read twice and compare:
+
+    flashrom -p $p -r dump.1
+    flashrom -p $p -r dump.2
+    cmp dump.1 dump.2
+
+Sanity check. Both files must have the chip's size, and neither may be all
+0xFF (no contact, or MISO open) nor all 0x00 (MISO held low). Each `wc`
+must print a non-zero count:
+
+    ls -l dump.1 dump.2
+    tr -d '\377' < dump.1 | wc -c
+    tr -d '\000' < dump.1 | wc -c
+    sha256sum dump.1 dump.2 | tee dump.sha256
+
+Archive both copies with `dump.sha256` next to them, off the machine that
+did the read, before anything is written to the chip.
+
+On a mismatch, in order: reseat the clip, check 3.3 V on VCC again, then
+slow the clock (`divisor=16`, `32`, `64`, ...) and read twice again. Three
+mismatches in a row at the slowest clock: stop. Something on the board is
+powered or shorted.
+
+## Install
+
+Nix with flakes enabled, direnv (`use flake` in `.envrc`). `nix develop`
+prints the available commands and installs the git hooks (lefthook.yml):
+linters and formatters on commit, `nix flake check` on push, which fails
+when a tracked `.svg` no longer matches its source.
+
+## Two ideas worth stealing
+
+**The current limit as a fault detector.** With the limit set just above
+the idle current of the flash's rail, a board that is still powered, a
+back-feed path or a misaligned clip shows up as CC mode on the PSU before
+it shows up as a corrupt dump or a dead chip.
+
+**Two reads or nothing.** One read proves nothing about contact quality.
+Two identical reads with a recorded sha256 make the dump the reference that
+every later write is checked against.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
