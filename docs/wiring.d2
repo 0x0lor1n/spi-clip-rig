@@ -1,0 +1,67 @@
+direction: right
+style.fill: "#16161d"
+
+classes: {
+  board: {style: {fill: "#1f1f28"; stroke: "#7e9cd8"; font-color: "#dcd7ba"; stroke-width: 2; border-radius: 6; bold: true}}
+  pin: {style: {fill: "#2a2a37"; stroke: "#54546d"; font-color: "#dcd7ba"; font-size: 20}}
+  nc: {style: {fill: "#2a2a37"; stroke: "#c34043"; font-color: "#c34043"; font-size: 20; stroke-dash: 3}}
+  pwr: {style: {stroke: "#e46876"; stroke-width: 3; font-color: "#e46876"}}
+  gnd: {style: {stroke: "#727169"; stroke-width: 3; font-color: "#727169"}}
+  cs: {style: {stroke: "#e6c384"; stroke-width: 3; font-color: "#e6c384"}}
+  clk: {style: {stroke: "#7fb4ca"; stroke-width: 3; font-color: "#7fb4ca"}}
+  mosi: {style: {stroke: "#98bb6c"; stroke-width: 3; font-color: "#98bb6c"}}
+  miso: {style: {stroke: "#957fb8"; stroke-width: 3; font-color: "#957fb8"}}
+}
+
+title: "Lab PSU 3.3 V + ESP-Prog JTAG -> SOIC-8 clip on a 25xx SPI flash" {
+  near: top-center
+  shape: text
+  style: {font-color: "#dcd7ba"; font-size: 30; bold: true}
+}
+
+psu: "Lab PSU (CC), 3.3 V, limit 300 mA" {
+  class: board
+  plus: "+ (red banana)" {class: pin}
+  minus: "- (black banana)" {class: pin}
+}
+
+clip: "SOIC-8 clip (pin 1 on the chip dot)" {
+  class: board
+  p8: "8  VCC" {class: pin}
+  p3: "3  WP#" {class: pin}
+  p7: "7  HOLD#" {class: pin}
+  p4: "4  GND" {class: pin}
+  p1: "1  CS#" {class: pin}
+  p6: "6  CLK" {class: pin}
+  p5: "5  DI" {class: pin}
+  p2: "2  DO" {class: pin}
+}
+
+prog: "ESP-Prog JTAG header (I/O jumper = 3.3 V)" {
+  class: board
+  tms: "2  TMS" {class: pin}
+  tck: "4  TCK" {class: pin}
+  tdi: "8  TDI" {class: pin}
+  tdo: "6  TDO" {class: pin}
+  gnd: "3  GND" {class: pin}
+  vdd: "1  VDD: leave unconnected" {class: nc}
+}
+
+# Undirected, left node first: dagre ranks by edge direction, so this keeps
+# PSU | clip | ESP-Prog as three columns.
+psu.plus -- clip.p8: "+3.3 V" {class: pwr}
+psu.plus -- clip.p3: "+3.3 V" {class: pwr}
+psu.plus -- clip.p7: "+3.3 V" {class: pwr}
+psu.minus -- clip.p4: "GND" {class: gnd}
+
+clip.p1 -- prog.tms: "CS#" {class: cs}
+clip.p6 -- prog.tck: "CLK" {class: clk}
+clip.p5 -- prog.tdi: "MOSI" {class: mosi}
+clip.p2 -- prog.tdo: "MISO" {class: miso}
+clip.p4 -- prog.gnd: "GND" {class: gnd}
+
+note: "board under test fully unpowered; clip on/off only with PSU output off and USB unplugged\npower order: PSU on, check 3.3 V on VCC, then ESP-Prog USB in; reverse to disconnect" {
+  near: bottom-center
+  shape: text
+  style: {font-color: "#e6c384"; font-size: 24; italic: true}
+}
