@@ -42,6 +42,14 @@
               '';
 
           render-docs = b.mkRenderDocs { };
+          fizzel = b.mkFizzel "fizzel" "docs/bench.fzz";
+
+          # docs/bench.fzz is tracked; `nix build .#bench-fzz` regenerates it from gen.py.
+          bench-fzz = b.mkBenchFzz {
+            name = "spi-clip-rig-bench-fzz";
+            gen = ./src/fritzing/gen.py;
+            python = python pkgs;
+          };
 
           default = docs;
         }
@@ -52,6 +60,7 @@
           name = "spi-clip-rig";
           packages = with self.packages.${pkgs.stdenv.hostPlatform.system}; [
             render-docs
+            fizzel
             pkgs.d2
             (python pkgs)
           ];
@@ -61,8 +70,16 @@
               "regenerate docs/{schematic,wiring}.{svg,png} from src/schematic and wiring.d2"
             ]
             [
+              "fizzel"
+              "docs/bench.fzz in Fritzing"
+            ]
+            [
+              "nix build .#bench-fzz"
+              "regenerate bench.fzz from src/fritzing/gen.py"
+            ]
+            [
               "nix flake check"
-              "docs freshness"
+              "Fritzing lint, docs/bench freshness"
             ]
             [
               "lefthook run pre-commit"
@@ -79,14 +96,22 @@
       checks = forAll (
         pkgs:
         let
+          b = bench pkgs;
           pkg = self.packages.${pkgs.stdenv.hostPlatform.system};
         in
         {
           # PNG is not compared, resvg output is not byte-stable across versions.
-          docs-fresh = (bench pkgs).mkFreshCheck "docs-fresh" pkg.docs ./docs [
+          docs-fresh = b.mkFreshCheck "docs-fresh" pkg.docs ./docs [
             "schematic.svg"
             "wiring.svg"
           ];
+          bench-fresh = b.mkFreshCheck "bench-fresh" pkg.bench-fzz ./docs [ "bench.fzz" ];
+          bench-lint = b.mkBenchLint {
+            fzz = pkg.bench-fzz;
+            sketches = [ "bench" ];
+            cases = ./src/fritzing/lint_cases.py;
+            python = python pkgs;
+          };
         }
       );
     };
